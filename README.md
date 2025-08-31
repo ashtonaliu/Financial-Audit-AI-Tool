@@ -4,6 +4,15 @@ AI-powered auditor for corporate travel & expense data. This desktop app ingests
 
 > **Note:** For illustration/demo purposes, the tool currently audits only **5 randomly selected employee/report groups** from the dataset. You can modify this in the code to process all groups.
 
+## 📌 Note on Data
+
+This project was originally developed as part of an **AWS DXHub** initiative.  
+The tool is designed to work with a **specific proprietary dataset and format**.  
+Due to confidentiality, that dataset cannot be shared in this repository.
+
+⚠️ Because of this, the code will not run successfully out-of-the-box.  
+This repository is intended to showcase the **architecture, workflow, and implementation details**, rather than provide a runnable demo.
+
 ## ✨ What it does
 - **Import** one or many Concur Excel files (XLS/XLSX).
 - **Clean & group** expenses by employee/report.
