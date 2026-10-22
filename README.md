@@ -1,187 +1,62 @@
 # Financial Audit AI Tool
 
-AI-powered auditor for corporate travel & expense data. This desktop app ingests Concur-style Excel exports, applies policy rules (including your own), runs them through a Large Language Model (LLM) for nuanced checks, and produces clean reports and charts.
+A desktop app that audits travel and expense reports for Cal Poly's financial audit office. It reads Concur Excel exports, sends each employee's expenses to Claude 3 Sonnet on Amazon Bedrock along with the Cal Poly and CSU travel policy, and writes out flagged reports and charts.
 
-> **Note:** For illustration/demo purposes, the tool currently audits only **5 randomly selected employee/report groups** from the dataset. You can modify this in the code to process all groups.
+Our team of five built this during the Cal Poly DxHub AI Summer Camp (sponsored by AWS) in August 2025. This is a fork of the [team repository](https://github.com/flwrsfralgernn/Financial-Audit-AI-Tool).
 
-## 📌 Note on Data
+**Note:** The tool was built around a confidential dataset that is not included here, so the code will not run as is. In demo mode it also audits only 5 randomly chosen employee reports. You can change this in `services/auditor.py`.
 
-This project was originally developed as part of an **AWS DXHub** initiative.  
-The tool is designed to work with a **specific proprietary dataset and format**.  
-Due to confidentiality, that dataset cannot be shared in this repository.
+## How it works
 
-⚠️ Because of this, the code will not run successfully out-of-the-box.  
-This repository is intended to showcase the **architecture, workflow, and implementation details**, rather than provide a runnable demo.
+1. Load one or more Concur exports and combine them into a master report.
+2. Clean the data and group expenses by employee and report.
+3. Build a prompt with each group's expenses and the policy text from `config/policies/policy_rules.txt`.
+4. Send the groups to Claude 3 Sonnet in parallel. The model returns the rows that violate policy or need an exception.
+5. Merge those flags back into the data and write the reports and charts.
 
-## ✨ What it does
-- **Import** one or many Concur Excel files (XLS/XLSX).
-- **Clean & group** expenses by employee/report.
-- **Policy checks**
-  - **Rule-based**: fast validations from your configurable policy file.
-  - **LLM checks**: context-aware audits against the provided policy text.
-- **Outputs**
-  - `audit_reports/`
-    - `Audited_Expenses_<timestamp>.xlsx` (full dataset with an **Audit Flag** column)
-    - `Violations_Report_<timestamp>.xlsx`
-    - `Exceptions_Report_<timestamp>.xlsx`
-    - Per-group `.txt` summaries
-  - `summary_charts/` PNG charts for quick insights
-- **GUI workflow** (simple desktop app) — point, click, audit.
+## Output
 
-## 🧭 Project structure
-```
-Financial-Audit-AI-Tool/
-├─ app/
-│  ├─ main.py                 # Launch the desktop app (start here)
-│  ├─ ...                     # UI and helpers
-├─ config/
-│  ├─ policies/
-│  │  └─ policy.txt           # Editable rule-based policy (your quick rules)
-│  └─ .env.example            # (optional) example env file
-├─ audit_reports/             # Generated audit workbooks & text reports
-├─ summary_charts/            # Generated PNG charts
-├─ requirements.txt           # Python deps
-├─ README.md                  # ← You are here
-└─ ...                        # Other modules/utilities
-```
-> Your exact tree may differ a bit as you iterate.
+All files are saved in `audit_reports/` and `summary_charts/`.
 
-## 🛠️ Prerequisites
-- **Python 3.10+**
-- **pip**
-- **AWS account** with access to **Amazon Bedrock** (for the LLM API)
-- Works on Windows/macOS/Linux
+- `Audited_Expenses_<timestamp>.xlsx`: every row with an Audit Flag column (red for violations, yellow for exceptions)
+- `Violations_Report_<timestamp>.xlsx` and `Exceptions_Report_<timestamp>.xlsx`: flagged rows only
+- A text summary for each employee report
+- Bar and pie charts of the results
 
-## 🚀 Quick Start
+## Design notes
 
-### 1) Clone
+**RAG vs. putting the policy in the prompt.** We tried two ways of giving the model the travel policy. The first stored the Cal Poly and CSU policies in an Amazon Bedrock Knowledge Base and used `retrieve_and_generate` to pull the relevant sections for each trip. The second puts the full policy text directly in the prompt. We went with the second one because it was simpler, the policy fits in the prompt, and there is no knowledge base to set up. The Knowledge Base version is still in the commit history.
+
+**Parallel processing.** Excel files load in parallel with a `ProcessPoolExecutor`, and the Bedrock calls run in parallel with a `ThreadPoolExecutor`.
+
+## My part
+
+I built the data pipeline that combines and formats the Concur exports (`combine_and_format.py`), the Knowledge Base (RAG) prototype and trip-based evaluation, and a large update to `main.py` that added features and sped up execution.
+
+## Running it
+
+Requirements: Python 3.10+ and an AWS account with Bedrock access to Claude 3 Sonnet.
+
 ```bash
-git clone https://github.com/flwrsfralgernn/Financial-Audit-AI-Tool.git
+git clone https://github.com/ashtonaliu/Financial-Audit-AI-Tool.git
 cd Financial-Audit-AI-Tool
-```
-
-### 2) (Optional) Create a virtual environment
-```bash
-python -m venv venv
-# macOS / Linux
-source venv/bin/activate
-# Windows
-venv\Scripts\activate
-```
-
-### 3) Install dependencies
-```bash
 pip install -r requirements.txt
 ```
 
-### 4) Configure AWS credentials
-Option A — AWS CLI:
-```bash
-aws configure
-# Enter AWS Access Key ID, Secret, and default region (e.g., us-west-2)
-```
-Option B — Environment variables:
-```bash
-# macOS / Linux
-export AWS_ACCESS_KEY_ID=...
-export AWS_SECRET_ACCESS_KEY=...
-export AWS_DEFAULT_REGION=us-west-2
+Set up AWS credentials with `aws configure`, and create a local `config/config.py` with your keys (it is not committed). Then run:
 
-# Windows PowerShell
-$env:AWS_ACCESS_KEY_ID="..."
-$env:AWS_SECRET_ACCESS_KEY="..."
-$env:AWS_DEFAULT_REGION="us-west-2"
-```
-
-### 5) Configure the app
-Create a `.env` file or set env vars:
-```ini
-AWS_REGION=us-west-2
-BEDROCK_MODEL_ID=amazon.titan-text-lite-v1
-```
-
-### 6) Run the application
 ```bash
 python app/main.py
 ```
-Select your Concur Excel file (or combine multiple), click **Run Audit**, and check `audit_reports/` & `summary_charts/`.
 
-## 📁 Input expectations
-- Concur-style Excel export (XLS/XLSX)
-- Typical fields: date, category, amount, merchant, payment type, report/employee IDs
-- Includes `Original Row` index for model output alignment
+Select the Concur files, click **Run Audit**, and check the output folders.
 
-## 🧩 How the audit works
-1. Load & clean data
-2. Group by employee/report
-3. Apply rule-based checks from `config/policies/policy_rules.txt`
-4. **Randomly select 5 groups** (demo mode)
-5. Send selected groups to anthropic.claude-3-sonnet-20240229-v1:0 for detailed analysis based on your policy text
-6. Merge returned row flags into dataset
-7. Output Excel, text reports, and charts
+To change the policy, edit `config/policies/policy_rules.txt`. The model ID is set in `services/auditor.py`, and the policy length limit is in `config/settings.py`.
 
-## 📝 Editing the policy
-- **Local rules:** Edit `config/policies/policy_rules.txt`
-- This text is also sent to the LLM to guide compliance checking.
+## Team
 
-## ▶️ Usage
-1. Run `python app/main.py`
-2. Select or combine Excel files
-3. Click **Run Audit**
-4. Review:
-   - `audit_reports/Audited_Expenses_<timestamp>.xlsx`
-   - `audit_reports/Violations_Report_<timestamp>.xlsx`
-   - `audit_reports/Exceptions_Report_<timestamp>.xlsx`
-   - Individual `.txt` summaries
-   - Charts in `summary_charts/`
+Davit Hakobyan, Isabela Fernandez, Wenfan Wei, Ellie Romero, and Ashton Liu
 
-## 📊 Output details
-- **Audited_Expenses**: All rows + `Audit Flag` column, with optional color formatting (red for violations, yellow for exceptions)
-- **Violations/Exceptions Reports**: Only flagged rows
-- **TXT Summaries**: Plain text findings
-- **Charts**: PNG bar/pie charts of violation data
+## License
 
-## 🔧 Configuration
-Required env vars:
-- `AWS_REGION`
-- `BEDROCK_MODEL_ID`
-Optional:
-- `AWS_ACCESS_KEY_ID`
-- `AWS_SECRET_ACCESS_KEY`
-
-## 🧪 Dev tips
-- Test with small files first
-- Keep `policy.txt` concise
-- Log prompts & outputs during debugging
-- Keep UI thin; call core logic from buttons
-
-## ❗ Troubleshooting
-- **Invalid AWS token:** Re-run `aws configure` or update env vars
-- **No results from LLM:** Ensure policy.txt is not empty
-- **Nothing flagged:** Ensure policy rules are clear and data matches expected format
-- **Output path issues:** Ensure `audit_reports/` and `summary_charts/` exist
-
-## 🤝 Contributing
-1. Open an issue
-2. Branch from main
-3. Add tests/docs
-
-## 📜 License
-MIT (or update for your org)
-
-## 💡 Roadmap
-- CLI mode
-- Multi-policy runs
-- Dashboards
-- Per-diem & receipt OCR
-- Exception workflow enhancements
-
-## 🙌 Acknowledgments
-Thanks to contributors and the AWS Cal Poly DxHub AI Summer Program community.
-
-## 👥 Contributors
-- Davit Hakobyan
-- Isabela Fernandez
-- Wenfan Wei
-- Ellie Romero
-- Ashton Liu  
+MIT
